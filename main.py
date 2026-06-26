@@ -143,6 +143,16 @@ def cmd_export(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_footage(args: argparse.Namespace) -> None:
+    from youtube_creator.footage_finder import find_footage
+    find_footage(topic=args.topic)
+
+
+def cmd_description(args: argparse.Namespace) -> None:
+    from youtube_creator.yt_description import generate_yt_description
+    generate_yt_description(topic=args.topic)
+
+
 def cmd_learn(args: argparse.Namespace) -> None:
     from youtube_creator.learning import regenerate_learning_profile, print_learning_summary
     regenerate_learning_profile()
@@ -212,11 +222,11 @@ def cmd_vault(args: argparse.Namespace) -> None:
 
 def cmd_produce(args: argparse.Namespace) -> None:
     """
-    Full interactive production pipeline:
-      validate → research → script → revise → export → visuals → seo
+    Full interactive production pipeline — 9 steps:
+      validate → research → script → revise → export → visuals → footage → seo → description
 
     Each step prompts before continuing. Pass --auto to run without prompts.
-    Pass --from <stage> to start mid-pipeline from a saved project.
+    Pass --from <stage> to resume mid-pipeline from a saved project.
     """
     from youtube_creator.validate_idea import validate_and_improve
     from youtube_creator.research import research_idea
@@ -224,7 +234,9 @@ def cmd_produce(args: argparse.Namespace) -> None:
     from youtube_creator.revise_script import revise_script
     from youtube_creator.elevenlabs_export import export_for_elevenlabs
     from youtube_creator.visual_prompts import generate_visual_prompts
+    from youtube_creator.footage_finder import find_footage
     from youtube_creator.seo_package import generate_seo_package
+    from youtube_creator.yt_description import generate_yt_description
     from youtube_creator.projects import create_project, load_stage, save_stage
     from youtube_creator.idea_vault import add_idea
     from youtube_creator.learning import collect_feedback, regenerate_learning_profile
@@ -235,47 +247,53 @@ def cmd_produce(args: argparse.Namespace) -> None:
     start_from = args.from_stage or "validate"
     visual_style = args.visual_style
 
-    STAGES = ["validate", "research", "script", "revise", "export", "visuals", "seo"]
+    STAGES = [
+        "validate", "research", "script", "revise",
+        "export", "visuals", "footage", "seo", "description",
+    ]
+    TOTAL = len(STAGES)
 
     def should_run(stage: str) -> bool:
         return STAGES.index(stage) >= STAGES.index(start_from)
 
-    def ask(question: str) -> bool:
-        return True if auto else _prompt_continue(question)
+    def ask(question: str, default: bool = True) -> bool:
+        return True if auto else _prompt_continue(question, default)
 
     create_project(topic, niche)
-
-    total = 7
     step = 0
 
     # ── Step 1: Validate ─────────────────────────────────────────────────────
     if should_run("validate"):
         step += 1
-        _step_banner(step, total, "IDEA VALIDATION")
+        _step_banner(step, TOTAL, "IDEA VALIDATION")
         validate_and_improve(idea=topic, niche=niche)
         add_idea(idea=topic, niche=niche, source="validated", tags=["produce"])
 
     # ── Step 2: Research ─────────────────────────────────────────────────────
     if should_run("research"):
-        if should_run("validate") and not ask("Research this topic now?"):
-            print("  Skipped research. Continuing...")
-        else:
+        proceed = True
+        if should_run("validate"):
+            proceed = ask("Research this topic now?")
+        if proceed:
             step += 1
-            _step_banner(step, total, "RESEARCH")
+            _step_banner(step, TOTAL, "RESEARCH")
             research_idea(idea=topic, niche=niche)
+        else:
+            print("  Skipped research.")
 
     # ── Step 3: Script ───────────────────────────────────────────────────────
     if should_run("script"):
         if not ask("Generate the script now?"):
-            print("  Stopped. Run 'python main.py produce' with --from script to resume.")
+            print(f"\nStopped at script stage.")
+            print(f"Resume with:  python main.py produce \"{topic}\" --from script")
             return
 
         step += 1
-        _step_banner(step, total, "SCRIPT GENERATION")
+        _step_banner(step, TOTAL, "SCRIPT GENERATION")
 
         research_notes = load_stage(topic, "research") or ""
         if research_notes:
-            print("[Research loaded from project]")
+            print("[Research loaded from project ✓]")
 
         script_text = generate_script(
             topic=topic,
@@ -284,59 +302,82 @@ def cmd_produce(args: argparse.Namespace) -> None:
             audience=niche,
             research_notes=research_notes,
         )
-
         if script_text:
             save_stage(topic, "script", script_text)
-            print(f"✓ Script saved to project.")
     else:
         script_text = load_stage(topic, "script") or ""
 
     if not script_text:
         print("\nNo script available — cannot continue pipeline.")
+        print(f"Run:  python main.py script \"{topic}\"  then resume.")
         return
 
     # ── Step 4: Revise ───────────────────────────────────────────────────────
     if should_run("revise"):
-        if ask("Revise the script before continuing?"):
+        if ask("Revise the script before exporting?", default=False):
             step += 1
-            _step_banner(step, total, "SCRIPT REVISION")
-            script_text = revise_script(topic=topic, script_text=script_text) or script_text
+            _step_banner(step, TOTAL, "SCRIPT REVISION")
+            revised = revise_script(topic=topic, script_text=script_text)
+            if revised:
+                script_text = revised
 
     # ── Step 5: ElevenLabs Export ────────────────────────────────────────────
     if should_run("export"):
-        if ask("Export clean script for ElevenLabs?"):
+        if ask("Export clean spoken script for ElevenLabs?"):
             step += 1
-            _step_banner(step, total, "ELEVENLABS EXPORT")
+            _step_banner(step, TOTAL, "ELEVENLABS EXPORT")
             export_for_elevenlabs(topic=topic, script_text=script_text)
 
-    # ── Step 6: Visual Prompts ───────────────────────────────────────────────
+    # ── Step 6: Visual Prompts (AI-generated images + video) ─────────────────
     if should_run("visuals"):
-        if ask("Generate visual prompts for OpenArt?"):
+        if ask("Generate AI image + video prompts for OpenArt?"):
             step += 1
-            _step_banner(step, total, "VISUAL PROMPTS")
+            _step_banner(step, TOTAL, "VISUAL PROMPTS  (OpenArt)")
             generate_visual_prompts(
                 topic=topic,
                 visual_style=visual_style,
                 script_text=script_text,
             )
 
-    # ── Step 7: SEO Package ──────────────────────────────────────────────────
-    if should_run("seo"):
-        if ask("Generate SEO package (titles, thumbnail, tags, description)?"):
+    # ── Step 7: Footage Finder (real stock footage) ───────────────────────────
+    if should_run("footage"):
+        if ask("Search for real stock footage for your scenes?"):
             step += 1
-            _step_banner(step, total, "SEO PACKAGE")
+            _step_banner(step, TOTAL, "FOOTAGE FINDER  (Stock Footage)")
+            find_footage(topic=topic, script_text=script_text)
+
+    # ── Step 8: SEO Package (titles + thumbnails) ─────────────────────────────
+    if should_run("seo"):
+        if ask("Generate SEO package (title options + thumbnail concepts)?"):
+            step += 1
+            _step_banner(step, TOTAL, "SEO PACKAGE  (Titles + Thumbnails)")
             generate_seo_package(topic=topic, script_text=script_text)
 
-    # ── Feedback + learning ──────────────────────────────────────────────────
-    print("\n" + "=" * 60)
+    # ── Step 9: YouTube Description ───────────────────────────────────────────
+    if should_run("description"):
+        if ask("Generate copy-paste YouTube description with chapters + keywords?"):
+            step += 1
+            _step_banner(step, TOTAL, "YOUTUBE DESCRIPTION  (Copy-Paste Ready)")
+            seo_data = load_stage(topic, "seo") or ""
+            generate_yt_description(
+                topic=topic,
+                script_text=script_text,
+                seo_data=seo_data,
+            )
+
+    # ── Summary ───────────────────────────────────────────────────────────────
+    print("\n" + "█" * 60)
     print("  PRODUCTION COMPLETE")
-    print("=" * 60)
-    print(f"\nProject files saved in: ~/.youtube_creator/projects/")
-    print("  script.md          — full script with directions")
-    print("  elevenlabs.txt     — clean spoken-only voice script")
-    print("  visual_prompts.txt — OpenArt image + video prompts")
-    print("  seo.md             — titles, thumbnail, tags, chapters")
-    print()
+    print("█" * 60)
+    print(f"\nAll files saved to:  ~/.youtube_creator/projects/")
+    print("")
+    print("  script.md           → full script with all directions")
+    print("  elevenlabs.txt      → clean spoken-only voice script")
+    print("  visual_prompts.txt  → OpenArt AI image + video prompts")
+    print("  footage.md          → real stock footage search results")
+    print("  seo.md              → title options + thumbnail concepts")
+    print("  description.md      → copy-paste YouTube description")
+    print("")
 
     if not auto:
         result = collect_feedback(topic)
@@ -367,7 +408,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_produce.add_argument("--niche", default="", help="Channel niche")
     p_produce.add_argument(
         "--from", dest="from_stage", default="validate",
-        choices=["validate", "research", "script", "revise", "export", "visuals", "seo"],
+        choices=["validate", "research", "script", "revise", "export",
+                 "visuals", "footage", "seo", "description"],
         help="Resume pipeline from a specific stage (default: validate)",
     )
     p_produce.add_argument(
@@ -504,6 +546,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_vnote.add_argument("text")
 
     p_vault.set_defaults(func=cmd_vault, vault_action="list")
+
+    # ── footage ───────────────────────────────────────────────────────────────
+    p_footage = sub.add_parser(
+        "footage",
+        help="Find real stock footage for your scenes (Pexels, Pixabay, Coverr, etc.)",
+    )
+    p_footage.add_argument("topic", help="Video topic (must have a saved script)")
+    p_footage.set_defaults(func=cmd_footage)
+
+    # ── description ───────────────────────────────────────────────────────────
+    p_desc = sub.add_parser(
+        "description",
+        help="Generate copy-paste YouTube description with SEO, chapters, and keywords",
+    )
+    p_desc.add_argument("topic", help="Video topic (must have a saved script)")
+    p_desc.set_defaults(func=cmd_description)
 
     # ── learn ─────────────────────────────────────────────────────────────────
     p_learn = sub.add_parser("learn", help="Rebuild learning profile from script feedback")
