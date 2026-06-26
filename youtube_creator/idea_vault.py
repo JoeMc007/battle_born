@@ -68,7 +68,7 @@ def get_ideas(
     niche: str | None = None,
     tag: str | None = None,
     min_score: int | None = None,
-) -> list[dict]:
+) -> list[dict]:  # noqa: E501
     """Filter vault by status, niche, tag, or minimum viability score."""
     ideas = _load()
     if status:

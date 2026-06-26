@@ -91,7 +91,8 @@ def setup_dna_interactive() -> ChannelDNA:
                 return val
             print("  (required — please enter a value)")
 
-    def ask_list(prompt: str, current: list[str] = []) -> list[str]:
+    def ask_list(prompt: str, current: list[str] | None = None) -> list[str]:
+        current = current or []
         hint = f" [{', '.join(current)}]" if current else ""
         print(f"{prompt}{hint}")
         print("  (enter one per line, blank line when done)")

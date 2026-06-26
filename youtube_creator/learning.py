@@ -53,6 +53,8 @@ def collect_feedback(idea: str) -> tuple[int, str] | None:
 
 def _gather_all_feedback() -> list[dict]:
     """Collect feedback entries from all projects."""
+    if not PROJECTS_DIR.exists():
+        return []
     entries = []
     projects = list_projects()
     for p in projects:
