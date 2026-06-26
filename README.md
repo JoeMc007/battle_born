@@ -1,6 +1,7 @@
 # YouTube Creator App
 
-AI-powered CLI for YouTube creators — validate ideas and generate scripts using Claude Opus 4.8.
+AI-powered CLI for YouTube creators — validate ideas, research facts, and generate scripts
+using Claude Opus 4.8.
 
 ## Setup
 
@@ -9,19 +10,49 @@ pip install -r requirements.txt
 export ANTHROPIC_API_KEY=your-key-here
 ```
 
-## Usage
+## Creator Workflow
 
-### Validate & Improve a Video Idea
+The recommended path runs two steps automatically:
 
-Analyze your idea's potential and get 3 improved versions with stronger hooks:
+```
+validate → research → (you review) → script
+```
+
+### Step 1 + 2 combined: `workflow` (recommended)
+
+Runs idea validation and deep fact research back-to-back:
+
+```bash
+python main.py workflow "5 productivity hacks that actually work" --niche "self-improvement"
+```
+
+### Step 1 only: `validate`
+
+Score your idea's potential and get 3 stronger hook variations:
 
 ```bash
 python main.py validate "5 productivity hacks that actually work" --niche "self-improvement"
 ```
 
-### Generate a Full Script
+### Step 2 only: `research`
 
-Get a ready-to-record script with visual cues, pacing notes, and chapter markers:
+Deep-dive into facts, statistics, expert opinions, and sources for any topic:
+
+```bash
+python main.py research "5 productivity hacks that actually work" --niche "self-improvement"
+```
+
+Outputs organized sections:
+- **Key Facts** — verified claims with inline citations
+- **Statistics & Data** — numbers and study results with dates
+- **Expert Opinions** — credible authority quotes
+- **Common Misconceptions** — what people get wrong (protects your credibility)
+- **Counterarguments** — the other side, presented fairly
+- **Sources** — full reference list
+
+### Step 3: `script`
+
+Generate a ready-to-record script after reviewing your research:
 
 ```bash
 python main.py script "5 productivity hacks that actually work" \
@@ -44,9 +75,11 @@ python main.py script "5 productivity hacks that actually work" \
 
 ## How It Works
 
-- **Idea Validator**: Uses Claude Opus 4.8 with adaptive thinking + live web search to assess
-  your idea against current trends, competition, and audience demand
-- **Script Generator**: Uses Claude Opus 4.8 with adaptive thinking to craft a full
-  professionally structured script optimized for viewer retention
+- **Idea Validator**: Claude Opus 4.8 + adaptive thinking + live web search scores your idea
+  and generates stronger hook variations
+- **Researcher**: Claude Opus 4.8 performs multiple web searches, cross-references sources,
+  and flags disputed or uncertain claims with ⚠️ so your content stays honest
+- **Script Generator**: Claude Opus 4.8 crafts a full professionally structured script with
+  `[VISUAL CUE]`, `[PAUSE]`, and `[TITLE CARD]` markers ready to record
 
-Both features stream output in real time so you see results as Claude generates them.
+All features stream output in real time so you see results as Claude generates them.

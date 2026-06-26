@@ -10,6 +10,27 @@ def cmd_validate(args: argparse.Namespace) -> None:
     validate_and_improve(idea=args.idea, niche=args.niche or "")
 
 
+def cmd_research(args: argparse.Namespace) -> None:
+    from youtube_creator.research import research_idea
+    research_idea(idea=args.idea, niche=args.niche or "")
+
+
+def cmd_workflow(args: argparse.Namespace) -> None:
+    """Run the full validate → research pipeline."""
+    from youtube_creator.validate_idea import validate_and_improve
+    from youtube_creator.research import research_idea
+
+    print("\n" + "█" * 60)
+    print("  STEP 1 OF 2 — IDEA VALIDATION")
+    print("█" * 60)
+    validate_and_improve(idea=args.idea, niche=args.niche or "")
+
+    print("\n" + "█" * 60)
+    print("  STEP 2 OF 2 — RESEARCH")
+    print("█" * 60)
+    research_idea(idea=args.idea, niche=args.niche or "")
+
+
 def cmd_script(args: argparse.Namespace) -> None:
     from youtube_creator.generate_script import generate_script
     key_points = args.points.split(",") if args.points else None
@@ -22,6 +43,11 @@ def cmd_script(args: argparse.Namespace) -> None:
     )
 
 
+def _add_idea_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("idea", help="Your video idea (put it in quotes)")
+    parser.add_argument("--niche", help="Your channel niche or focus area", default="")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="youtube-creator",
@@ -29,11 +55,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
+    # workflow subcommand — validate + research in one shot
+    p_workflow = sub.add_parser(
+        "workflow",
+        help="Full pipeline: validate idea → research facts (recommended)",
+    )
+    _add_idea_args(p_workflow)
+    p_workflow.set_defaults(func=cmd_workflow)
+
     # validate subcommand
     p_validate = sub.add_parser("validate", help="Validate and improve a video idea")
-    p_validate.add_argument("idea", help="Your video idea (put it in quotes)")
-    p_validate.add_argument("--niche", help="Your channel niche or focus area", default="")
+    _add_idea_args(p_validate)
     p_validate.set_defaults(func=cmd_validate)
+
+    # research subcommand
+    p_research = sub.add_parser(
+        "research",
+        help="Research facts, stats, and sources for an idea",
+    )
+    _add_idea_args(p_research)
+    p_research.set_defaults(func=cmd_research)
 
     # script subcommand
     p_script = sub.add_parser("script", help="Generate a full video script")
