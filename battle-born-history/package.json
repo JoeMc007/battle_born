@@ -11,7 +11,9 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
     "@turf/turf": "^7.3.5",
+    "@xyflow/react": "^12.11.1",
     "html-to-image": "^1.11.13",
+    "html2canvas": "^1.4.1",
     "jszip": "^3.10.1",
     "maplibre-gl": "^5.24.0",
     "milsymbol": "^3.0.4",

@@ -113,3 +113,8 @@ export async function saveOOBProject(
   if (error) throw error;
   return data;
 }
+
+export async function deleteOOBProject(id: string): Promise<void> {
+  const { error } = await getClient().from("oob_projects").delete().eq("id", id);
+  if (error) throw error;
+}
