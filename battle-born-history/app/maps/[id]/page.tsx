@@ -7,8 +7,11 @@ import nextDynamic from "next/dynamic";
 import type maplibregl from "maplibre-gl";
 import { getMapProject, saveMapProject } from "@/lib/supabase";
 import { exportMapAsPNG } from "@/lib/mapExport";
+import { exportFramesAsZip } from "@/lib/exportFrames";
 import LayerPanel from "@/components/MapBuilder/LayerPanel";
-import type { MapProject, GeoJSONLayer } from "@/lib/types";
+import PhaseEditor from "@/components/MapBuilder/PhaseEditor";
+import TimelineBar from "@/components/MapBuilder/TimelineBar";
+import type { MapProject, GeoJSONLayer, Phase } from "@/lib/types";
 
 // MapCanvas must be client-only (no SSR) because MapLibre needs the DOM
 const MapCanvas = nextDynamic(() => import("@/components/MapBuilder/MapCanvas"), {
@@ -20,6 +23,8 @@ const MapCanvas = nextDynamic(() => import("@/components/MapBuilder/MapCanvas"),
   ),
 });
 
+type SidebarTab = "layers" | "phases";
+
 export default function MapBuilderPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -28,9 +33,13 @@ export default function MapBuilderPage() {
 
   const [project, setProject] = useState<MapProject | null>(null);
   const [layers, setLayers] = useState<GeoJSONLayer[]>([]);
+  const [phases, setPhases] = useState<Phase[]>([]);
+  const [activePhase, setActivePhase] = useState(0);
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("layers");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingFrames, setExportingFrames] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Load project
@@ -41,38 +50,37 @@ export default function MapBuilderPage() {
         if (!p) { setError("Project not found"); return; }
         setProject(p);
         setLayers(p.geojson_layers ?? []);
+        setPhases(p.phases ?? []);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [id]);
 
-  // Auto-save layers with debounce
-  const handleLayersChange = useCallback((newLayers: GeoJSONLayer[]) => {
-    setLayers(newLayers);
+  // Debounced save helper
+  const scheduleSave = useCallback((data: Partial<MapProject>, delay = 1500) => {
+    if (!id) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
-      if (!id) return;
       setSaving(true);
-      try {
-        await saveMapProject(id, { geojson_layers: newLayers });
-      } catch (e) {
-        console.error("Auto-save failed:", e);
-      } finally {
-        setSaving(false);
-      }
-    }, 1500);
+      try { await saveMapProject(id, data); }
+      catch (e) { console.error("Auto-save failed:", e); }
+      finally { setSaving(false); }
+    }, delay);
   }, [id]);
 
-  const handleViewChange = useCallback(
-    (center: [number, number], zoom: number) => {
-      if (!id) return;
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        saveMapProject(id, { center, zoom }).catch(console.error);
-      }, 2000);
-    },
-    [id]
-  );
+  const handleLayersChange = useCallback((newLayers: GeoJSONLayer[]) => {
+    setLayers(newLayers);
+    scheduleSave({ geojson_layers: newLayers });
+  }, [scheduleSave]);
+
+  const handlePhasesChange = useCallback((newPhases: Phase[]) => {
+    setPhases(newPhases);
+    scheduleSave({ phases: newPhases });
+  }, [scheduleSave]);
+
+  const handleViewChange = useCallback((center: [number, number], zoom: number) => {
+    scheduleSave({ center, zoom }, 2000);
+  }, [scheduleSave]);
 
   const handleExport = async () => {
     if (!mapRef.current) return;
@@ -84,6 +92,22 @@ export default function MapBuilderPage() {
       await exportMapAsPNG(mapRef.current, filename, 2);
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleExportFrames = async () => {
+    if (!mapRef.current || phases.length === 0) return;
+    setExportingFrames(true);
+    try {
+      await exportFramesAsZip(
+        mapRef.current,
+        phases,
+        project?.title ?? "map",
+        setActivePhase,
+        2,
+      );
+    } finally {
+      setExportingFrames(false);
     }
   };
 
@@ -120,24 +144,77 @@ export default function MapBuilderPage() {
             disabled={exporting}
             className="bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded-lg transition-colors"
           >
-            {exporting ? "Exporting..." : "Export PNG (2×)"}
+            {exporting ? "Exporting..." : "Export PNG"}
           </button>
         </div>
       </header>
 
-      {/* Body: Layer panel + Map */}
+      {/* Body: sidebar + map */}
       <div className="flex flex-1 min-h-0">
-        <div className="w-72 flex-shrink-0 overflow-hidden">
-          <LayerPanel layers={layers} onChange={handleLayersChange} />
+        {/* Sidebar */}
+        <div className="w-72 flex-shrink-0 flex flex-col overflow-hidden border-r border-gray-700">
+          {/* Tab switcher */}
+          <div className="flex border-b border-gray-700 flex-shrink-0">
+            {(["layers", "phases"] as SidebarTab[]).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setSidebarTab(tab)}
+                className={`flex-1 py-2 text-xs font-medium capitalize transition-colors ${
+                  sidebarTab === tab
+                    ? "bg-gray-800 text-white border-b-2 border-blue-500"
+                    : "text-gray-500 hover:text-gray-300"
+                }`}
+              >
+                {tab}
+                {tab === "phases" && phases.length > 0 && (
+                  <span className="ml-1 text-blue-400">({phases.length})</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1 overflow-hidden">
+            {sidebarTab === "layers" ? (
+              <LayerPanel
+                layers={layers}
+                phases={phases}
+                activePhase={activePhase}
+                onChange={handleLayersChange}
+              />
+            ) : (
+              <PhaseEditor
+                phases={phases}
+                activePhase={activePhase}
+                onPhasesChange={handlePhasesChange}
+                onActivePhaseChange={setActivePhase}
+              />
+            )}
+          </div>
         </div>
-        <div className="flex-1 relative">
-          <MapCanvas
-            layers={layers}
-            center={project?.center ?? undefined}
-            zoom={project?.zoom ?? 6}
-            onMapReady={(m) => { mapRef.current = m; }}
-            onViewChange={handleViewChange}
-          />
+
+        {/* Map + Timeline */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex-1 relative">
+            <MapCanvas
+              layers={layers}
+              activePhase={activePhase}
+              center={project?.center ?? undefined}
+              zoom={project?.zoom ?? 6}
+              onMapReady={(m) => { mapRef.current = m; }}
+              onViewChange={handleViewChange}
+            />
+          </div>
+
+          {/* Timeline bar — only shown when there are phases */}
+          {phases.length > 0 && (
+            <TimelineBar
+              phases={phases}
+              activePhase={activePhase}
+              onPhaseChange={setActivePhase}
+              onExportFrames={handleExportFrames}
+              exportingFrames={exportingFrames}
+            />
+          )}
         </div>
       </div>
     </div>

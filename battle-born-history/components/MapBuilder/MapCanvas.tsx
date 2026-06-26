@@ -15,6 +15,7 @@ const AFFILIATION_COLORS: Record<Affiliation, string> = {
 
 interface MapCanvasProps {
   layers: GeoJSONLayer[];
+  activePhase?: number;
   center?: [number, number];
   zoom?: number;
   onMapReady?: (map: maplibregl.Map) => void;
@@ -23,6 +24,7 @@ interface MapCanvasProps {
 
 export default function MapCanvas({
   layers,
+  activePhase,
   center = [6.0, 50.5], // Default: NW Europe
   zoom = 6,
   onMapReady,
@@ -95,12 +97,12 @@ export default function MapCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sync layers to map whenever they change
+  // Sync layers to map whenever they or the active phase change
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
-    syncLayers(map, layers);
-  }, [layers]);
+    syncLayers(map, layers, activePhase);
+  }, [layers, activePhase]);
 
   return (
     <div ref={containerRef} className="w-full h-full rounded-lg overflow-hidden" />
@@ -109,7 +111,15 @@ export default function MapCanvas({
 
 // ── Layer sync ────────────────────────────────────────────────────────────────
 
-function syncLayers(map: maplibregl.Map, layers: GeoJSONLayer[]) {
+function isLayerActiveInPhase(layer: GeoJSONLayer, activePhase: number | undefined): boolean {
+  if (activePhase === undefined) return true;
+  if (layer.visible_from === undefined && layer.visible_to === undefined) return true;
+  const from = layer.visible_from ?? 0;
+  const to = layer.visible_to ?? Infinity;
+  return activePhase >= from && activePhase <= to;
+}
+
+function syncLayers(map: maplibregl.Map, layers: GeoJSONLayer[], activePhase?: number) {
   const activeIds = new Set(layers.map((l) => l.id));
 
   // Remove layers/sources no longer in list
@@ -130,7 +140,8 @@ function syncLayers(map: maplibregl.Map, layers: GeoJSONLayer[]) {
   for (const layer of layers) {
     const srcId = `bbh-${layer.id}`;
     const color = layer.color || AFFILIATION_COLORS[layer.affiliation] || "#3b82f6";
-    const visibility = layer.visible ? "visible" : "none";
+    const phaseVisible = isLayerActiveInPhase(layer, activePhase);
+    const visibility = layer.visible && phaseVisible ? "visible" : "none";
 
     if (map.getSource(srcId)) {
       (map.getSource(srcId) as maplibregl.GeoJSONSource).setData(layer.geojson);
