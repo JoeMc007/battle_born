@@ -93,11 +93,27 @@ def cmd_script(args: argparse.Namespace) -> None:
                 update_idea(entry["id"], status="scripted")
                 break
 
+    # Auto-export for ElevenLabs if requested
+    if getattr(args, "export_elevenlabs", False) and script_text and not args.no_project:
+        from youtube_creator.elevenlabs_export import export_for_elevenlabs
+        print("\n" + "─" * 60)
+        print("Auto-exporting for ElevenLabs...")
+        export_for_elevenlabs(topic=args.topic, script_text=script_text)
+
     # Collect feedback and update learning profile
     if not args.no_feedback and script_text:
         result = collect_feedback(args.topic)
         if result:
             regenerate_learning_profile()
+
+
+def cmd_export(args: argparse.Namespace) -> None:
+    from youtube_creator.elevenlabs_export import export_for_elevenlabs
+    export_for_elevenlabs(
+        topic=args.topic,
+        output_file=args.output or "",
+        polish=not args.no_polish,
+    )
 
 
 def cmd_learn(args: argparse.Namespace) -> None:
@@ -233,6 +249,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-project", action="store_true",
         help="Don't save output to the project system",
     )
+    p_script.add_argument(
+        "--export-elevenlabs", action="store_true",
+        help="Automatically export a clean ElevenLabs version after generation",
+    )
     p_script.set_defaults(func=cmd_script)
 
     # projects
@@ -270,6 +290,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_vnote.add_argument("text", help="Note text")
 
     p_vault.set_defaults(func=cmd_vault, vault_action="list")
+
+    # export
+    p_export = sub.add_parser(
+        "export",
+        help="Export a clean spoken-only script for ElevenLabs (no directions or markers)",
+    )
+    p_export.add_argument("topic", help="Video topic / project name (must match your script)")
+    p_export.add_argument(
+        "--output", default="", metavar="FILE",
+        help="Output file path (default: saved to project folder as elevenlabs.txt)",
+    )
+    p_export.add_argument(
+        "--no-polish", action="store_true",
+        help="Skip the Claude polish pass (faster, regex-only strip)",
+    )
+    p_export.set_defaults(func=cmd_export)
 
     # learn
     p_learn = sub.add_parser(
