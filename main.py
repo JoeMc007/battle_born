@@ -107,6 +107,17 @@ def cmd_script(args: argparse.Namespace) -> None:
             regenerate_learning_profile()
 
 
+def cmd_visuals(args: argparse.Namespace) -> None:
+    from youtube_creator.visual_prompts import generate_visual_prompts
+    generate_visual_prompts(
+        topic=args.topic,
+        visual_style=args.style,
+        sentences_per_chunk=args.chunk,
+        broll_count=args.broll,
+        output_file=args.output or "",
+    )
+
+
 def cmd_export(args: argparse.Namespace) -> None:
     from youtube_creator.elevenlabs_export import export_for_elevenlabs
     export_for_elevenlabs(
@@ -290,6 +301,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_vnote.add_argument("text", help="Note text")
 
     p_vault.set_defaults(func=cmd_vault, vault_action="list")
+
+    # visuals
+    p_visuals = sub.add_parser(
+        "visuals",
+        help="Generate image + video prompts for every scene and B-roll (OpenArt ready)",
+    )
+    p_visuals.add_argument("topic", help="Video topic / project name (must have a saved script)")
+    p_visuals.add_argument(
+        "--style",
+        default="cinematic documentary, photorealistic, shallow depth of field",
+        help="Master visual style description applied to every prompt",
+    )
+    p_visuals.add_argument(
+        "--chunk", type=int, default=3, choices=[2, 3, 4],
+        help="Sentences per visual scene (default: 3)",
+    )
+    p_visuals.add_argument(
+        "--broll", type=int, default=8,
+        help="Number of B-roll prompt sets to generate (default: 8)",
+    )
+    p_visuals.add_argument(
+        "--output", default="", metavar="FILE",
+        help="Output file path (default: saved to project folder as visual_prompts.txt)",
+    )
+    p_visuals.set_defaults(func=cmd_visuals)
 
     # export
     p_export = sub.add_parser(
