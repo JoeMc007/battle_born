@@ -2,6 +2,7 @@
 
 from .client import get_client, MODEL, MAX_TOKENS
 from .channel_dna import load_dna
+from .learning import load_learning_profile
 
 # ─── Anti-AI-tell word list ────────────────────────────────────────────────────
 AI_BANNED = [
@@ -92,6 +93,8 @@ You write scripts that:
 
 {dna_block}
 
+{learning_block}
+
 {retention_rules}
 
 ## SCRIPT FORMAT
@@ -140,8 +143,8 @@ def generate_script(
     audience: str = "",
     key_points: list[str] | None = None,
     research_notes: str = "",
-) -> None:
-    """Stream a world-class YouTube script with full retention engineering."""
+) -> str:
+    """Stream a world-class YouTube script with full retention engineering. Returns full text."""
     client = get_client()
     dna = load_dna()
 
@@ -150,6 +153,8 @@ def generate_script(
         "No channel DNA set up yet. Write in a natural, direct, conversational human voice. "
         "Run `python main.py setup` to personalize the voice to this creator."
     )
+
+    learning_block = load_learning_profile()
 
     audience_line = audience or (dna.audience if not dna.is_empty() else "general YouTube audience")
     target_words = duration_minutes * 150
@@ -165,6 +170,7 @@ def generate_script(
 
     system = SCRIPT_SYSTEM.format(
         dna_block=dna_block,
+        learning_block=learning_block,
         retention_rules=RETENTION_BLUEPRINT,
     )
 
@@ -202,6 +208,8 @@ Begin with the first spoken word."""
     print(f"Style: {style}  |  Duration: ~{duration_minutes} min  |  Voice: {dna.channel_name or 'default'}")
     print("=" * 60 + "\n")
 
+    full_script = ""
+
     with client.messages.stream(
         model=MODEL,
         max_tokens=MAX_TOKENS,
@@ -223,5 +231,7 @@ Begin with the first spoken word."""
                 delta = event.delta
                 if delta.type == "text_delta" and showing_response:
                     print(delta.text, end="", flush=True)
+                    full_script += delta.text
 
     print("\n")
+    return full_script
